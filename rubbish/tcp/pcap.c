@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-void getPacket(u_char * arg, const struct pcap_pkthdr *pkthdr,
+void get_packet(u_char * arg, const struct pcap_pkthdr *pkthdr,
 	       const u_char * packet)
 {
 	int *id = (int *)arg;
@@ -26,35 +26,37 @@ void getPacket(u_char * arg, const struct pcap_pkthdr *pkthdr,
 
 int main()
 {
-	char errBuf[PCAP_ERRBUF_SIZE], *devStr;
+	char errbuf[PCAP_ERRBUF_SIZE], *devstr;
+	bpf_u_int32 mask;
+	bpf_u_int32 net;
 
 	/* get a device */
-	devStr = pcap_lookupdev(errBuf);
-
-	if (devStr) {
-		printf("success: device: %s\n", devStr);
+	devstr = pcap_lookupdev(errbuf);
+	if (devstr) {
+		printf("success: device: %s\n", devstr);
 	} else {
-		printf("error: %s\n", errBuf);
+		printf("error: %s\n", errbuf);
 		exit(1);
 	}
 
-	/* open a device, wait until a packet arrives */
-	pcap_t *device = pcap_open_live(devStr, 65535, 1, 0, errBuf);
+	pcap_lookupnet(devstr, &net, &mask, errbuf);
 
+	/* open a device, wait until a packet arrives */
+	pcap_t *device = pcap_open_live(devstr, 65535, 1, 0, errbuf);
 	if (!device) {
-		printf("error: pcap_open_live(): %s\n", errBuf);
+		printf("error: pcap_open_live(): %s\n", errbuf);
 		exit(1);
 	}
 
 	/* construct a filter */
-#if 1
+#if 0
 	struct bpf_program filter;
-	pcap_compile(device, &filter, "dst port 8899", 1, 0);
+	pcap_compile(device, &filter, "dst port 8899", 1, net);
 	pcap_setfilter(device, &filter);
 #endif
 	/* wait loop forever */
 	int id = 0;
-	pcap_loop(device, -1, getPacket, (u_char *) & id);
+	pcap_loop(device, -1, get_packet, (u_char *) & id);
 
 	pcap_close(device);
 
