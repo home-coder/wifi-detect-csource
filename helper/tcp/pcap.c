@@ -42,7 +42,6 @@ void dispatcher_handler(u_char * temp1,
 	u_short sport, dport;
 	time_t local_tv_sec;
 	int i = 0;
-	u_char mac[6];
 
 	/* convert the timestamp to readable format */
 	local_tv_sec = header->ts.tv_sec;
@@ -50,13 +49,19 @@ void dispatcher_handler(u_char * temp1,
 	strftime(timestr, sizeof timestr, "%H:%M:%S", ltime);
 
 	/* print timestamp and length of the packet */
-	printf("%s.%.6d len:%d ", timestr, (int)header->ts.tv_usec, header->len);
+	printf("%s.%.6d len:%d \n", timestr, (int)header->ts.tv_usec, header->len);
+	for (i = 0; i < header->len; ++i) {
+		printf(" %02x", pkt_data[i]);
+		if ((i + 1) % 16 == 0) {
+			printf("\n");
+		}
+	}
+	printf("\n");
 	
 	/* 获取以太网帧的目的MAC */
 	eh = (enet_header *)(pkt_data);
 	for (i = 0; i < 6; i++) {
-		mac[i] = *((u_char *)eh + 6 + i);
-		printf("%02x:", mac[i]);
+		printf("%02x:", eh->src_mac[i]);
 	}
 	printf("\n");
 
@@ -66,6 +71,7 @@ void dispatcher_handler(u_char * temp1,
 	/* retireve the position of the tcp header */
 	//从IPV4首部中取出"首部长度(4 bits)"
 	ip_len = (ih->ver_ihl & 0xf) * 4;
+	printf("ip_len = %d\n", ip_len);
 	//强制类型转换，便于用自己的命名处理
 	th = (tcp_header *) ((u_char *) ih + ip_len);
 
@@ -135,11 +141,12 @@ int main()
 	}
 
 	/* construct a filter */
-#if 1
 	struct bpf_program filter;
 	pcap_compile(device, &filter, "dst port 8899", 1, netp);
-	pcap_setfilter(device, &filter);
+#ifdef DEBUG
+	pcap_compile(device, &filter, "eth0", 1, netp);
 #endif
+	pcap_setfilter(device, &filter);
 	/* wait loop forever */
 	int id = 0;
 #ifdef DEBUG
