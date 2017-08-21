@@ -56,7 +56,7 @@ void dispatcher_handler(u_char * temp1,
 	eh = (enet_header *)(pkt_data);
 	for (i = 0; i < 6; i++) {
 		mac[i] = *((u_char *)eh + i);
-		printf("%02x", mac[i]);
+		printf("%02x:", mac[i]);
 	}
 	printf("\n");
 
