@@ -1,85 +1,164 @@
-#include <stdio.h>  
-#include <pcap.h>  
-#include <netinet/if_ether.h>  
+#include <pcap.h>
+#include <time.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>		/* superset of previous */
+#include <arpa/inet.h>
+#include "prot.h"
 
-void deal(u_char *user, const struct pcap_pkthdr *hdr, const u_char *packet){ 
-	static int count = 0; 
-	struct ether_header *eth_header; 
-	u_char *ptr; 
+void get_packet(u_char * arg, const struct pcap_pkthdr *pkthdr,
+		const u_char * packet)
+{
+	int *id = (int *)arg;
 
-	printf("Packet length %d\n", hdr->len); 
-	printf("length of portion present: %d\n", hdr->caplen); 
+	printf("id: %d\n", ++(*id));
+	printf("Packet length: %d\n", pkthdr->len);
+	printf("Number of bytes: %d\n", pkthdr->caplen);
+	printf("Recieved time: %s", ctime((const time_t *)&pkthdr->ts.tv_sec));
 
-	eth_header = (struct ether_header*)packet; 
-	if(ntohs(eth_header->ether_type) != ETHERTYPE_IP){ 
+	int i;
+	for (i = 0; i < pkthdr->len; ++i) {
+		printf(" %02x", packet[i]);
+		if ((i + 1) % 16 == 0) {
+			printf("\n");
+		}
+	}
+
+	printf("\n\n");
+}
+
+void dispatcher_handler(u_char * temp1,
+			const struct pcap_pkthdr *header,
+			const u_char * pkt_data)
+{
+	struct tm *ltime;
+	char timestr[16];
+	enet_header *eh;
+	ip_header *ih;
+	tcp_header *th;
+	u_int ip_len;
+	u_short sport, dport;
+	time_t local_tv_sec;
+	int i = 0;
+
+	/* convert the timestamp to readable format */
+	local_tv_sec = header->ts.tv_sec;
+	ltime = localtime(&local_tv_sec);
+	strftime(timestr, sizeof timestr, "%H:%M:%S", ltime);
+
+	/* print timestamp and length of the packet */
+	printf("%s.%.6d len:%d \n", timestr, (int)header->ts.tv_usec, header->len);
+	for (i = 0; i < header->len; ++i) {
+		printf(" %02x", pkt_data[i]);
+		if ((i + 1) % 16 == 0) {
+			printf("\n");
+		}
+	}
+	printf("\n");
+	
+	/* 获取以太网帧的目的MAC */
+	eh = (enet_header *)(pkt_data);
+	if(ntohs(eh->ethtype) != ETHERTYPE_IP){ 
 		printf("not ethernet packet\n"); 
 		return; 
-	} 
+	}   
+	for (i = 0; i < 6; i++) {
+		printf("%02x:", eh->src_mac[i]);
+	}
+	printf("\n");
 
-	ptr = eth_header->ether_dhost; 
-	int i = 0; 
-	printf("destination address(MAC):"); 
-	while(i < ETHER_ADDR_LEN){ 
-		printf(" %x", *ptr++); 
-		i++; 
-	} 
+	/* retireve the position of the ip header */
+	ih = (ip_header *) (pkt_data + 14);	//length of ethernet header
 
-	printf("\nsource address(MAC):"); 
-	ptr = eth_header->ether_shost; 
-	i = 0; 
-	while(i < ETHER_ADDR_LEN){ 
-		printf(" %x", *ptr++); 
-		i++; 
-	} 
+	/* retireve the position of the tcp header */
+	//从IPV4首部中取出"首部长度(4 bits)"
+	ip_len = (ih->ver_ihl & 0xf) * 4;
+	printf("ip_len = %d\n", ip_len);
+	//强制类型转换，便于用自己的命名处理
+	th = (tcp_header *) ((u_char *) ih + ip_len);
 
-	printf("\nfinish deal with %d packet\n", count); 
-	count++; 
-} 
-int main(){ 
-	pcap_t *sniffer_des; 
-	char errbuf[PCAP_ERRBUF_SIZE]; 
-	char *net_dev; 
-	bpf_u_int32 net, mask; 
-	struct bpf_program fp; 
-	const u_char *packet; 
-	struct pcap_pkthdr hdr; 
+	/* convert from network byte order to host byte order */
+	sport = ntohs(th->source_port);
+	dport = ntohs(th->destination_port);
 
-	int ret; 
+	/* print ip addresses and udp ports */
+	printf("%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d\n",
+	       ih->saddr.byte1,
+	       ih->saddr.byte2,
+	       ih->saddr.byte3,
+	       ih->saddr.byte4,
+	       sport,
+	       ih->daddr.byte1,
+	       ih->daddr.byte2, ih->daddr.byte3, ih->daddr.byte4, dport);
+}
 
-	char filter[] = "port 8899"; 
+int main()
+{
+	char errbuf[PCAP_ERRBUF_SIZE], *devstr;
+	bpf_u_int32 maskp;
+	bpf_u_int32 netp;
+	struct in_addr addr;
+	/* get the network address in a human readable form */
+	char *net;		/* dot notation of the network address */
+	char *mask;		/* dot notation of the network mask */
+	int ret = 0;
 
-	net_dev = pcap_lookupdev(errbuf); 
-	if(net_dev == NULL){ 
-		printf("get device error:%s\n", errbuf); 
-		return 1; 
-	} 
-	net_dev = "eth2"; 
-	if(pcap_lookupnet(net_dev, &net, &mask, errbuf) == -1){ 
-		printf("get net error:%s\n", errbuf); 
-		return 1; 
-	} 
+	/* get a device */
+	devstr = pcap_lookupdev(errbuf);
+	if (devstr) {
+		printf("success: device: %s\n", devstr);
+	} else {
+		printf("error: %s\n", errbuf);
+		exit(1);
+	}
 
-	sniffer_des = pcap_open_live(net_dev, 65535, 1, 5000, errbuf); 
-	if(sniffer_des == NULL){ 
-		printf("pcap_open_live%s\n", errbuf); 
-		return 1; 
-	} 
+	ret = pcap_lookupnet(devstr, &netp, &maskp, errbuf);
+	if (ret == -1) {
+		printf("pcap_lookupnet() error: %s\n", errbuf);
+		exit(1);
+	}
 
-	if(pcap_compile(sniffer_des, &fp, filter, 0, mask) == -1){ 
-		printf("pcap_compile error\n"); 
-		return 1; 
-	} 
+	addr.s_addr = netp;
+	net = inet_ntoa(addr);
+	if (!net) {
+		perror("inet_ntoa() ip error: ");
+		exit(1);
+	}
+	printf("ip: %s\n", net);
 
-	if(pcap_setfilter(sniffer_des, &fp) == -1){ 
-		printf("pcap_setfilter() error\n"); 
-		return 1; 
-	} 
+	/* do the same as above for the device's mask */
+	addr.s_addr = maskp;
+	mask = inet_ntoa(addr);
+	if (!mask) {
+		perror("inet_ntoa() sub mask error: ");
+		exit(1);
+	}
+	printf("sub mask: %s\n", mask);
 
-	ret = pcap_loop(sniffer_des, 3, deal, NULL); 
-	if(ret == -1 || ret == -2){ 
-		printf("cannot get the pcaket\n"); 
-		return 1; 
-	} 
-	return 0; 
+	/* open a device, wait until a packet arrives */
+	pcap_t *device = pcap_open_live(devstr, 65535, 1, 0, errbuf);
+	if (!device) {
+		printf("error: pcap_open_live(): %s\n", errbuf);
+		exit(1);
+	}
 
-} 
+	/* construct a filter */
+	struct bpf_program filter;
+	pcap_compile(device, &filter, "wlan0", 1, netp);
+#ifdef DEBUG
+	pcap_compile(device, &filter, "eth0", 1, netp);
+#endif
+	pcap_setfilter(device, &filter);
+	/* wait loop forever */
+	int id = 0;
+#ifdef DEBUG
+	pcap_loop(device, -1, get_packet, (u_char *) & id);
+#else
+	pcap_loop(device, -1, dispatcher_handler, (u_char *) & id);
+#endif
+	pcap_close(device);
+
+	return 0;
+}

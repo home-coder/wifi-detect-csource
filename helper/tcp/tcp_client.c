@@ -26,7 +26,7 @@ int main(void)
 
 	his_end.sin_family = AF_INET;
 	his_end.sin_port = htons(8899);
-	inet_pton(AF_INET, "192.168.0.101", &his_end.sin_addr);
+	inet_pton(AF_INET, "192.168.0.104", &his_end.sin_addr);
 	his_len = sizeof(his_end);
 	ret = connect(sd, (struct sockaddr *)&his_end, his_len);
 	if (ret == -1) {
