@@ -49,7 +49,7 @@ int main()
 	}
 
 	/* construct a filter */
-#if 0
+#if 1
 	struct bpf_program filter;
 	pcap_compile(device, &filter, "dst port 8899", 1, net);
 	pcap_setfilter(device, &filter);
