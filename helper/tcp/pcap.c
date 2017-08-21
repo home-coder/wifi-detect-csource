@@ -52,10 +52,10 @@ void dispatcher_handler(u_char * temp1,
 	/* print timestamp and length of the packet */
 	printf("%s.%.6d len:%d ", timestr, (int)header->ts.tv_usec, header->len);
 	
-	/* 获取以太网帧的源与目的MAC */
+	/* 获取以太网帧的目的MAC */
 	eh = (enet_header *)(pkt_data);
 	for (i = 0; i < 6; i++) {
-		mac[i] = *((u_char *)eh + i);
+		mac[i] = *((u_char *)eh + 6 + i);
 		printf("%02x:", mac[i]);
 	}
 	printf("\n");
