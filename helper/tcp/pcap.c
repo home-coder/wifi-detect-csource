@@ -35,11 +35,14 @@ void dispatcher_handler(u_char * temp1,
 {
 	struct tm *ltime;
 	char timestr[16];
+	enet_header *eh;
 	ip_header *ih;
 	tcp_header *th;
 	u_int ip_len;
 	u_short sport, dport;
 	time_t local_tv_sec;
+	int i = 0;
+	u_char mac[6];
 
 	/* convert the timestamp to readable format */
 	local_tv_sec = header->ts.tv_sec;
@@ -48,6 +51,14 @@ void dispatcher_handler(u_char * temp1,
 
 	/* print timestamp and length of the packet */
 	printf("%s.%.6d len:%d ", timestr, (int)header->ts.tv_usec, header->len);
+	
+	/* 获取以太网帧的源与目的MAC */
+	eh = (enet_header *)(pkt_data);
+	for (i = 0; i < 6; i++) {
+		mac[i] = *((u_char *)eh + i);
+		printf("%02x", mac[i]);
+	}
+	printf("\n");
 
 	/* retireve the position of the ip header */
 	ih = (ip_header *) (pkt_data + 14);	//length of ethernet header
