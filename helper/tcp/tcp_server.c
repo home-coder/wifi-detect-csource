@@ -32,7 +32,7 @@ int main(void)
 
 	my_end.sin_family = AF_INET;
 	my_end.sin_port = htons(8899);
-	inet_pton(AF_INET, "192.168.0.101", &my_end.sin_addr);
+	inet_pton(AF_INET, "192.168.0.104", &my_end.sin_addr);
 	ret = bind(sd, (struct sockaddr *)&my_end, sizeof(my_end));
 	if (ret == -1) {
 		perror("bind()");
